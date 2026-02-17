@@ -83,39 +83,6 @@ Abra **Configurações > Prompts > Gerenciar Prompts...** para configurar prompt
 
 **Nota:** É necessária conexão ativa com a internet para todos os recursos de IA. Documentos com várias páginas e arquivos TIFF são processados automaticamente.
 
-## 4. Plano de modularização do add-on
-
-Objetivo: reduzir o tamanho do arquivo principal sem quebrar a lógica atual, fazendo apenas ajustes pontuais quando necessário.
-
-1. **Preparação da branch**
-   - Criar uma branch dedicada para a refatoração (ex.: `refactor/modularizar-vision-assistant`).
-   - Fazer todo o trabalho nessa branch para manter `main/master` estável.
-
-2. **Mapeamento de responsabilidades atuais**
-   - Separar o que hoje está concentrado em `addon/globalPlugins/visionAssistant/__init__.py` por domínios de funcionalidade.
-   - Identificar dependências compartilhadas (configuração, rede, prompts, UI, OCR, áudio).
-
-3. **Estrutura lógica sugerida (por funcionalidade)**
-   - `visionAssistant/core/` (configuração global, constantes, estado e utilidades base).
-   - `visionAssistant/services/` (API Gemini, tradução, OCR, transcrição, leitura de documentos).
-   - `visionAssistant/ui/` (diálogos, menus, janelas e integração com NVDA UI).
-   - `visionAssistant/features/` (comandos por recurso: tradução, visão, ditado, captcha, updates).
-   - `visionAssistant/utils/` (helpers reutilizáveis, validações, parsing e normalização).
-   - Manter `__init__.py` como ponto de entrada leve, apenas orquestrando imports e registro do plugin.
-
-4. **Migração incremental (mínimo risco)**
-   - Mover blocos pequenos por vez, preservando assinaturas e comportamento.
-   - Evitar mudanças amplas de lógica; alterar somente o necessário para desacoplar módulos.
-   - Validar cada etapa antes da próxima.
-
-5. **Testes e validação**
-   - Executar lint/checks já existentes no projeto após cada bloco migrado.
-   - Validar manualmente os fluxos críticos (atalhos, tradução, OCR, leitura de documento e ditado).
-
-6. **Entrega**
-   - Com a branch validada, fazer push para o repositório remoto.
-   - Abrir PR com resumo da nova estrutura e impacto esperado de manutenção.
-
 ## Alterações para 4.5
 
 **Gerenciador Avançado de Prompts:** Introduzido diálogo dedicado para personalizar prompts padrão e gerenciar prompts de usuário com suporte completo para adicionar, editar, reordenar e pré-visualizar.  
