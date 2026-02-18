@@ -49,8 +49,6 @@ from .prompt_manager_dialog import PromptManagerDialog
 log = logging.getLogger(__name__)
 addonHandler.initTranslation()
 
-_vision_assistant_instance = None
-
 from .constants import (
     ADDON_NAME,
     CHROME_OCR_KEYS,
@@ -136,8 +134,6 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
     def __init__(self):
         super(GlobalPlugin, self).__init__()
-        global _vision_assistant_instance
-        _vision_assistant_instance = self
         set_vision_assistant_instance(self)
         try:
             migrate_prompt_config_if_needed()
@@ -261,7 +257,6 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         tones.beep(500, 100)
 
     def terminate(self):
-        global _vision_assistant_instance
         try:
             if hasattr(self, 'va_submenu_item') and self.va_submenu_item:
                 self.tools_menu.Remove(self.va_submenu_item.GetId())
@@ -287,7 +282,6 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         
         self.translation_cache = {}
         self._last_source_text = None
-        _vision_assistant_instance = None
         set_vision_assistant_instance(None)
         gc.collect()
 
