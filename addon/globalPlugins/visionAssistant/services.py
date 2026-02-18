@@ -56,8 +56,10 @@ def send_ctrl_v():
         user32.keybd_event(VK_V, 0, 0, 0)
         user32.keybd_event(VK_V, 0, KEYEVENTF_KEYUP, 0)
         user32.keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0)
+        return True
     except Exception:
-        log.debug("Failed to send Ctrl+V", exc_info=True)
+        log.warning("Failed to send Ctrl+V", exc_info=True)
+        return False
 
 def get_proxy_opener():
     proxy_url = config.conf["VisionAssistant"]["proxy_url"].strip()
@@ -86,7 +88,7 @@ def get_twitter_download_link(tweet_url):
                 match = re.search(r'href="(https?://dl\.snapcdn\.app/[^"]+)"', html)
                 if match: return match.group(1)
     except Exception:
-        log.debug("Failed to fetch Twitter download link", exc_info=True)
+        log.warning("Failed to fetch Twitter download link", exc_info=True)
     return None
 
 def get_instagram_download_link(insta_url):
@@ -144,7 +146,7 @@ def get_tiktok_download_link(tiktok_url):
                 play_url = res['data']['play']
                 return play_url if play_url.startswith('http') else "https://www.tikwm.com" + play_url
     except Exception:
-        log.debug("Failed to fetch TikTok download link", exc_info=True)
+        log.warning("Failed to fetch TikTok download link", exc_info=True)
     return None
 
 def _download_temp_video(url):
@@ -160,7 +162,7 @@ def _download_temp_video(url):
                     f.write(chunk)
             return path
     except Exception:
-        log.debug("Failed to download temporary video", exc_info=True)
+        log.warning("Failed to download temporary video", exc_info=True)
     return None
 
 def get_file_path(title, wildcard, mode="open", multiple=False):

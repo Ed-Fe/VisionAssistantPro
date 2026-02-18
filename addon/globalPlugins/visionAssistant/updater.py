@@ -107,7 +107,8 @@ class UpdateManager:
             parts1 = [int(x) for x in v1.split('.')]
             parts2 = [int(x) for x in v2.split('.')]
             return (parts1 > parts2) - (parts1 < parts2)
-        except: return 0 if v1 == v2 else 1
+        except Exception:
+            return 0 if v1 == v2 else 1
 
     def _prompt_update(self, version, url, changes):
         dlg = UpdateDialog(gui.mainFrame, version, ADDON_NAME, changes)
