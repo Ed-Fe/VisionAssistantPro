@@ -110,7 +110,14 @@ from .services import (
 # --- Update Manager ---
 from .updater import UpdateDialog, UpdateManager
 
-from .dialogs import ChatDialog, DocumentViewerDialog, RangeDialog, SettingsPanel, VisionQADialog
+from .dialogs import (
+    ChatDialog,
+    DocumentViewerDialog,
+    RangeDialog,
+    SettingsPanel,
+    VisionQADialog,
+    set_vision_assistant_instance,
+)
 
 class GlobalPlugin(globalPluginHandler.GlobalPlugin):
     scriptCategory = ADDON_NAME
@@ -131,6 +138,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         super(GlobalPlugin, self).__init__()
         global _vision_assistant_instance
         _vision_assistant_instance = self
+        set_vision_assistant_instance(self)
         try:
             migrate_prompt_config_if_needed()
         except Exception as e:
@@ -280,6 +288,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         self.translation_cache = {}
         self._last_source_text = None
         _vision_assistant_instance = None
+        set_vision_assistant_instance(None)
         gc.collect()
 
     def report_status(self, msg):

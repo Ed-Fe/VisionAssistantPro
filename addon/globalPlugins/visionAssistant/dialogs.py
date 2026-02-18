@@ -5,9 +5,12 @@ import json
 import io
 import tempfile
 import threading
+import time
 import gc
 import wave
 import logging
+import base64
+from concurrent.futures import ThreadPoolExecutor
 
 import wx
 
@@ -37,10 +40,29 @@ from .prompt_helpers import (
     serialize_custom_prompts_v2,
     serialize_default_prompt_overrides,
 )
-from .services import GeminiHandler, get_file_path, get_mime_type, show_error_dialog
+from .services import (
+    ChromeOCREngine,
+    GeminiHandler,
+    GoogleTranslator,
+    SmartProgrammersOCREngine,
+    get_file_path,
+    get_mime_type,
+    show_error_dialog,
+)
+
+try:
+    import fitz
+except ImportError:
+    fitz = None
 
 log = logging.getLogger(__name__)
 addonHandler.initTranslation()
+_vision_assistant_instance = None
+
+
+def set_vision_assistant_instance(instance):
+    global _vision_assistant_instance
+    _vision_assistant_instance = instance
 
 class VisionQADialog(wx.Dialog):
     def __init__(self, parent, title, initial_text, context_data, callback_fn, extra_info=None, raw_content=None, status_callback=None, announce_on_open=True, allow_questions=True):
@@ -990,4 +1012,3 @@ class DocumentViewerDialog(wx.Dialog):
         except Exception as e:
             wx.CallAfter(wx.MessageBox, f"Save Error: {e}", "Error", wx.ICON_ERROR)
         finally: wx.CallAfter(self.btn_save.Enable)
-
