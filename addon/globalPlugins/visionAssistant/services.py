@@ -56,7 +56,8 @@ def send_ctrl_v():
         user32.keybd_event(VK_V, 0, 0, 0)
         user32.keybd_event(VK_V, 0, KEYEVENTF_KEYUP, 0)
         user32.keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0)
-    except: pass
+    except Exception:
+        log.debug("Failed to send Ctrl+V", exc_info=True)
 
 def get_proxy_opener():
     proxy_url = config.conf["VisionAssistant"]["proxy_url"].strip()
@@ -84,7 +85,8 @@ def get_twitter_download_link(tweet_url):
                 html = res_data.get('data', '')
                 match = re.search(r'href="(https?://dl\.snapcdn\.app/[^"]+)"', html)
                 if match: return match.group(1)
-    except: pass
+    except Exception:
+        log.debug("Failed to fetch Twitter download link", exc_info=True)
     return None
 
 def get_instagram_download_link(insta_url):
@@ -121,7 +123,8 @@ def get_instagram_download_link(insta_url):
             source_match = re.search(r'<source src="([^"]+)"', html_text)
             if source_match:
                 return source_match.group(1).replace('&amp;', '&')
-    except: pass
+    except Exception:
+        log.debug("Failed to fetch Instagram download link", exc_info=True)
     return None
 
 def get_tiktok_download_link(tiktok_url):
@@ -140,7 +143,8 @@ def get_tiktok_download_link(tiktok_url):
             if res.get('code') == 0:
                 play_url = res['data']['play']
                 return play_url if play_url.startswith('http') else "https://www.tikwm.com" + play_url
-    except: pass
+    except Exception:
+        log.debug("Failed to fetch TikTok download link", exc_info=True)
     return None
 
 def _download_temp_video(url):
@@ -155,7 +159,8 @@ def _download_temp_video(url):
                     if not chunk: break
                     f.write(chunk)
             return path
-    except: pass
+    except Exception:
+        log.debug("Failed to download temporary video", exc_info=True)
     return None
 
 def get_file_path(title, wildcard, mode="open", multiple=False):
@@ -538,7 +543,9 @@ class GeminiHandler:
                             return uri
                     time.sleep(2)
                 return None 
-            except: continue 
+            except Exception:
+                log.debug("Failed to upload file for chat with current key", exc_info=True)
+                continue
         return None
 
     @staticmethod
