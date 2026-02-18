@@ -54,10 +54,8 @@ _vision_assistant_instance = None
 from .constants import (
     ADDON_NAME,
     CHROME_OCR_KEYS,
-    DEFAULT_SYSTEM_PROMPTS,
     GEMINI_VOICES,
     GITHUB_REPO,
-    LEGACY_REFINER_TOKENS,
     MODELS,
     OCR_ENGINES,
     PROMPT_VARIABLES_GUIDE,
@@ -66,263 +64,22 @@ from .constants import (
     TARGET_CODES,
     TARGET_NAMES,
 )
+from .markdown_utils import clean_markdown, markdown_to_html
+from .prompt_helpers import (
+    apply_prompt_template,
+    get_builtin_default_prompts,
+    get_builtin_default_prompt_map,
+    get_configured_default_prompt_map,
+    get_configured_default_prompts,
+    get_prompt_text,
+    get_refine_menu_options,
+    load_configured_custom_prompts,
+    migrate_prompt_config_if_needed,
+    serialize_default_prompt_overrides,
+    serialize_custom_prompts_v2,
+)
 
 # --- Helpers ---
-
-def get_builtin_default_prompts():
-    builtins = []
-    for item in DEFAULT_SYSTEM_PROMPTS:
-        p = str(item["prompt"]).strip()
-        builtins.append({
-            "key": item["key"],
-            "section": item["section"],
-            "label": item["label"],
-            "display_label": f"{item['section']} - {item['label']}",
-            "internal": bool(item.get("internal")),
-            "prompt": p,
-            "default": p,
-        })
-    return builtins
-
-def get_builtin_default_prompt_map():
-    return {item["key"]: item for item in get_builtin_default_prompts()}
-
-def _normalize_custom_prompt_items(items):
-    normalized = []
-    if not isinstance(items, list):
-        return normalized
-
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        name = item.get("name")
-        content = item.get("content")
-        if not isinstance(name, str) or not isinstance(content, str):
-            continue
-        name = name.strip()
-        content = content.strip()
-        if name and content:
-            normalized.append({"name": name, "content": content})
-    return normalized
-
-def parse_custom_prompts_legacy(raw_value):
-    items = []
-    if not raw_value:
-        return items
-
-    normalized = raw_value.replace("\r\n", "\n").replace("\r", "\n")
-    for line in normalized.split("\n"):
-        for segment in line.split("|"):
-            segment = segment.strip()
-            if not segment or ":" not in segment:
-                continue
-            name, content = segment.split(":", 1)
-            name = name.strip()
-            content = content.strip()
-            if name and content:
-                items.append({"name": name, "content": content})
-    return items
-
-def parse_custom_prompts_v2(raw_value):
-    if not isinstance(raw_value, str) or not raw_value.strip():
-        return None
-    try:
-        data = json.loads(raw_value)
-    except Exception as e:
-        log.warning(f"Invalid custom_prompts_v2 config, falling back to legacy format: {e}")
-        return None
-    return _normalize_custom_prompt_items(data)
-
-def serialize_custom_prompts_v2(items):
-    normalized = _normalize_custom_prompt_items(items)
-    if not normalized:
-        return ""
-    return json.dumps(normalized, ensure_ascii=False)
-
-def load_configured_custom_prompts():
-    try:
-        raw_v2 = config.conf["VisionAssistant"]["custom_prompts_v2"]
-    except Exception:
-        raw_v2 = ""
-    items_v2 = parse_custom_prompts_v2(raw_v2)
-    if items_v2 is not None:
-        return items_v2
-    return parse_custom_prompts_legacy(config.conf["VisionAssistant"]["custom_prompts"])
-
-def _sanitize_default_prompt_overrides(data):
-    if not isinstance(data, dict):
-        return {}, False
-
-    changed = False
-    mutable = dict(data)
-    # Migrate old key used in previous versions.
-    legacy_vision = mutable.pop("vision_image_analysis", None)
-    if legacy_vision is not None:
-        changed = True
-    if isinstance(legacy_vision, str) and legacy_vision.strip():
-        legacy_text = legacy_vision.strip()
-        nav_value = mutable.get("vision_navigator_object")
-        if not isinstance(nav_value, str) or not nav_value.strip():
-            mutable["vision_navigator_object"] = legacy_text
-            changed = True
-        full_value = mutable.get("vision_fullscreen")
-        if not isinstance(full_value, str) or not full_value.strip():
-            mutable["vision_fullscreen"] = legacy_text
-            changed = True
-
-    valid_keys = set(get_builtin_default_prompt_map().keys())
-    sanitized = {}
-    for key, value in mutable.items():
-        if key not in valid_keys or not isinstance(value, str):
-            changed = True
-            continue
-        prompt_text = value.strip()
-        if not prompt_text:
-            changed = True
-            continue
-        if key in LEGACY_REFINER_TOKENS and prompt_text == LEGACY_REFINER_TOKENS[key]:
-            # Drop old token-only overrides and fallback to current built-ins.
-            changed = True
-            continue
-        if prompt_text != value:
-            changed = True
-        sanitized[key] = prompt_text
-    return sanitized, changed
-
-def migrate_prompt_config_if_needed():
-    changed = False
-
-    try:
-        raw_v2 = config.conf["VisionAssistant"]["custom_prompts_v2"]
-    except Exception:
-        raw_v2 = ""
-    raw_legacy = config.conf["VisionAssistant"]["custom_prompts"]
-
-    v2_items = parse_custom_prompts_v2(raw_v2)
-    if v2_items is None:
-        target_items = parse_custom_prompts_legacy(raw_legacy)
-    else:
-        target_items = v2_items
-
-    serialized_v2 = serialize_custom_prompts_v2(target_items)
-    if serialized_v2 != (raw_v2 or ""):
-        config.conf["VisionAssistant"]["custom_prompts_v2"] = serialized_v2
-        changed = True
-
-    # Legacy mirror is disabled. Clear old storage to prevent stale fallback data.
-    if raw_legacy:
-        config.conf["VisionAssistant"]["custom_prompts"] = ""
-        changed = True
-
-    try:
-        raw_defaults = config.conf["VisionAssistant"]["default_refine_prompts"]
-    except Exception:
-        raw_defaults = ""
-    if isinstance(raw_defaults, str) and raw_defaults.strip():
-        try:
-            defaults_data = json.loads(raw_defaults)
-        except Exception:
-            defaults_data = None
-        if isinstance(defaults_data, dict):
-            sanitized, migrated = _sanitize_default_prompt_overrides(defaults_data)
-            if migrated:
-                config.conf["VisionAssistant"]["default_refine_prompts"] = (
-                    json.dumps(sanitized, ensure_ascii=False) if sanitized else ""
-                )
-                changed = True
-
-    return changed
-
-def load_default_prompt_overrides():
-    try:
-        raw = config.conf["VisionAssistant"]["default_refine_prompts"]
-    except Exception:
-        raw = ""
-    if not isinstance(raw, str) or not raw.strip():
-        return {}
-
-    try:
-        data = json.loads(raw)
-    except Exception as e:
-        log.warning(f"Invalid default_refine_prompts config, using built-ins: {e}")
-        return {}
-
-    overrides, _ = _sanitize_default_prompt_overrides(data)
-    return overrides
-
-def get_configured_default_prompt_map():
-    prompt_map = get_builtin_default_prompt_map()
-    overrides = load_default_prompt_overrides()
-    for key, override in overrides.items():
-        if key not in prompt_map:
-            continue
-        if key in LEGACY_REFINER_TOKENS and override == LEGACY_REFINER_TOKENS[key]:
-            continue
-        prompt_map[key]["prompt"] = override
-    return prompt_map
-
-def get_configured_default_prompts():
-    prompt_map = get_configured_default_prompt_map()
-    items = []
-    for item in DEFAULT_SYSTEM_PROMPTS:
-        if item.get("internal"):
-            continue
-        key = item["key"]
-        if key in prompt_map:
-            items.append(dict(prompt_map[key]))
-    items.sort(key=lambda item: item.get("display_label", "").casefold())
-    return items
-
-def get_prompt_text(prompt_key):
-    prompt_map = get_configured_default_prompt_map()
-    item = prompt_map.get(prompt_key)
-    if item:
-        return item["prompt"]
-    return ""
-
-def serialize_default_prompt_overrides(items):
-    if not items:
-        return ""
-
-    base_map = {item["key"]: item["prompt"] for item in get_builtin_default_prompts()}
-    overrides = {}
-    for item in items:
-        key = item.get("key")
-        prompt_text = item.get("prompt", "")
-        if key not in base_map:
-            continue
-        if not isinstance(prompt_text, str):
-            continue
-        prompt_text = prompt_text.strip()
-        if prompt_text and prompt_text != base_map[key]:
-            overrides[key] = prompt_text
-
-    if not overrides:
-        return ""
-    return json.dumps(overrides, ensure_ascii=False)
-
-def get_refine_menu_options():
-    options = []
-    prompt_map = get_configured_default_prompt_map()
-    for key in REFINE_PROMPT_KEYS:
-        item = prompt_map.get(key)
-        if item:
-            options.append((item["label"], item["prompt"]))
-
-    for item in load_configured_custom_prompts():
-        # Translators: Prefix for custom prompts in the Refine menu
-        options.append((_("Custom: ") + item["name"], item["content"]))
-    return options
-
-def apply_prompt_template(template, replacements):
-    if not isinstance(template, str):
-        return ""
-
-    text = template
-    for key, value in replacements:
-        text = text.replace("{" + key + "}", str(value))
-
-    return text.strip()
 
 def finally_(func, final):
     @wraps(func)
@@ -332,53 +89,6 @@ def finally_(func, final):
         finally:
             final()
     return new
-
-def clean_markdown(text):
-    if not text: return ""
-    text = re.sub(r'\*\*|__|[*_]', '', text)
-    text = re.sub(r'^#+\s*', '', text, flags=re.MULTILINE)
-    text = re.sub(r'```', '', text)
-    text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)
-    text = re.sub(r'^\s*-\s+', '', text, flags=re.MULTILINE)
-    return text.strip()
-
-def markdown_to_html(text, full_page=False):
-    if not text: return ""
-    
-    html = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    html = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', html)
-    html = re.sub(r'__(.*?)__', r'<i>\1</i>', html)
-    html = re.sub(r'^### (.*)', r'<h3>\1</h3>', html, flags=re.M)
-    html = re.sub(r'^## (.*)', r'<h2>\1</h2>', html, flags=re.M)
-    html = re.sub(r'^# (.*)', r'<h1>\1</h1>', html, flags=re.M)
-    
-    lines = html.split('\n')
-    in_table = False
-    new_lines = []
-    table_style = 'border="1" style="border-collapse: collapse; width: 100%; margin-bottom: 10px;"'
-    td_style = 'style="padding: 5px; border: 1px solid #ccc;"'
-    
-    for line in lines:
-        stripped = line.strip()
-        if stripped.startswith('|') or (stripped.count('|') > 1 and len(stripped) > 5):
-            if not in_table:
-                new_lines.append(f'<table {table_style}>')
-                in_table = True
-            if '---' in stripped: continue
-            row_content = stripped.strip('|').split('|')
-            cells = "".join([f'<td {td_style}>{c.strip()}</td>' for c in row_content])
-            new_lines.append(f'<tr>{cells}</tr>')
-        else:
-            if in_table:
-                new_lines.append('</table>')
-                in_table = False
-            if stripped: new_lines.append(line + "<br>")
-            else: new_lines.append("<br>")
-    if in_table: new_lines.append('</table>')
-    html_body = "".join(new_lines)
-
-    if not full_page: return html_body
-    return f"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><style>body{{font-family:"Segoe UI",Arial,sans-serif;line-height:1.6;padding:20px;color:#333;max-width:800px;margin:0 auto}}h1,h2,h3{{color:#2c3e50;border-bottom:1px solid #eee;padding-bottom:5px}}pre{{background-color:#f4f4f4;padding:10px;border-radius:5px;overflow-x:auto;font-family:Consolas,monospace}}code{{background-color:#f4f4f4;padding:2px 5px;border-radius:3px;font-family:Consolas,monospace}}table{{border-collapse:collapse;width:100%;margin-bottom:10px}}td,th{{border:1px solid #ccc;padding:8px;text-align:left}}strong,b{{color:#000;font-weight:bold}}li{{margin-bottom:5px}}</style></head><body>{html_body}</body></html>"""
 
 def get_mime_type(path):
     ext = os.path.splitext(path)[1].lower()
